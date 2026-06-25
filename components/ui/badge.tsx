@@ -19,6 +19,16 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        "status-pending":
+          "bg-status-pending text-status-pending-fg border-transparent",
+        "status-note-draft":
+          "bg-status-note-draft text-status-note-draft-fg border-transparent",
+        "status-note-pub":
+          "bg-status-note-pub text-status-note-pub-fg border-transparent",
+        "status-sns":
+          "bg-status-sns text-status-sns-fg border-transparent",
+        "status-scheduled":
+          "bg-status-scheduled text-status-scheduled-fg border-transparent",
       },
       size: {
         default: "h-5 px-2 text-xs",

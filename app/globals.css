@@ -77,6 +77,21 @@
   --shadow-opacity: var(--shadow-opacity);
   --color-shadow-color: var(--shadow-color);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-fg: var(--status-pending-fg);
+  --color-status-note-draft: var(--status-note-draft);
+  --color-status-note-draft-fg: var(--status-note-draft-fg);
+  --color-status-note-pub: var(--status-note-pub);
+  --color-status-note-pub-fg: var(--status-note-pub-fg);
+  --color-status-sns: var(--status-sns);
+  --color-status-sns-fg: var(--status-sns-fg);
+  --color-status-scheduled: var(--status-scheduled);
+  --color-status-scheduled-fg: var(--status-scheduled-fg);
+  --color-tsukiko-green: var(--tsukiko-green);
+  --color-tsukiko-green-foreground: var(--tsukiko-green-foreground);
+  --color-tsukiko-green-subtle: var(--tsukiko-green-subtle);
+  --color-tsukiko-amber: var(--tsukiko-amber);
+  --color-tsukiko-amber-foreground: var(--tsukiko-amber-foreground);
 }
 
 :root {
@@ -114,6 +129,21 @@
   --sidebar-border: oklch(0.9039 0.0029 84.5597);
   --sidebar-ring: oklch(0.3732 0.0635 258.276);
   --destructive-foreground: oklch(1 0 0);
+  --status-pending: oklch(0.93 0.005 240);
+  --status-pending-fg: oklch(0.42 0.03 240);
+  --status-note-draft: oklch(0.93 0.07 75);
+  --status-note-draft-fg: oklch(0.45 0.1 60);
+  --status-note-pub: oklch(0.9 0.09 145);
+  --status-note-pub-fg: oklch(0.38 0.11 145);
+  --status-sns: oklch(0.9 0.07 300);
+  --status-sns-fg: oklch(0.42 0.1 295);
+  --status-scheduled: oklch(0.92 0.09 48);
+  --status-scheduled-fg: oklch(0.44 0.13 43);
+  --tsukiko-green: #64aa44;
+  --tsukiko-green-foreground: #ffffff;
+  --tsukiko-green-subtle: #f0f8ec;
+  --tsukiko-amber: #f5c518;
+  --tsukiko-amber-foreground: #1a1100;
   --font-sans:
     var(--font-inter), "Hiragino Sans", "BIZ UDPGothic", "Yu Gothic UI",
     system-ui, sans-serif;
@@ -177,6 +207,21 @@
   --sidebar-border: oklch(0.3211 0 0);
   --sidebar-ring: oklch(0.7441 0.1311 264.2789);
   --destructive-foreground: oklch(1 0 0);
+  --status-pending: oklch(0.35 0.01 240);
+  --status-pending-fg: oklch(0.75 0.01 240);
+  --status-note-draft: oklch(0.4 0.08 70);
+  --status-note-draft-fg: oklch(0.85 0.08 75);
+  --status-note-pub: oklch(0.35 0.08 145);
+  --status-note-pub-fg: oklch(0.8 0.1 145);
+  --status-sns: oklch(0.38 0.08 295);
+  --status-sns-fg: oklch(0.82 0.08 300);
+  --status-scheduled: oklch(0.42 0.11 45);
+  --status-scheduled-fg: oklch(0.88 0.1 50);
+  --tsukiko-green: #64aa44;
+  --tsukiko-green-foreground: #ffffff;
+  --tsukiko-green-subtle: #1a2a14;
+  --tsukiko-amber: #f5c518;
+  --tsukiko-amber-foreground: #1a1100;
   --radius: 0.625rem;
   --font-sans:
     var(--font-inter), "Hiragino Sans", "BIZ UDPGothic", "Yu Gothic UI",
