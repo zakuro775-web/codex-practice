@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import type React from "react";
 
 import { type Column, type ColumnStatus, STATUS_ORDER } from "@/data/columns";
 import { ColumnLibraryPane } from "@/components/workspace/ColumnLibraryPane";
@@ -9,6 +10,27 @@ import { NoteDraftPane } from "@/components/workspace/NoteDraftPane";
 import { SnsGeneratorPane } from "@/components/workspace/SnsGeneratorPane";
 import { useColumnData } from "@/hooks/useColumnData";
 import { useLocalOverrides } from "@/hooks/useLocalOverrides";
+import { usePaneResize } from "@/hooks/usePaneResize";
+import { cleanDraftText } from "@/lib/clean-draft";
+
+/** ペイン間のドラッグ可能な仕切り */
+function PaneDivider({
+  onPointerDown,
+}: {
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      className="group relative w-1 shrink-0 cursor-col-resize select-none"
+      onPointerDown={onPointerDown}
+    >
+      {/* 視覚的な 1px ライン */}
+      <div className="absolute inset-y-0 left-[1px] w-px bg-border transition-colors group-hover:bg-primary/40 group-active:bg-primary/60" />
+    </div>
+  );
+}
 
 export function Workspace() {
   const {
@@ -27,6 +49,9 @@ export function Workspace() {
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const initializedRef = useRef(false);
+
+  const paneContainerRef = useRef<HTMLDivElement>(null);
+  const { widths, startDrag } = usePaneResize(paneContainerRef);
 
   // 初回ロード後：ステータスを localStorage とマージ、先頭を選択
   useEffect(() => {
@@ -55,7 +80,9 @@ export function Workspace() {
     (columnId: string, fallbackDraft: string) => {
       setDrafts((prev) => {
         if (prev[columnId] != null) return prev;
-        const draft = getDraft(columnId, fallbackDraft);
+        // localStorage に保存済みのユーザー編集テキストはそのまま、
+        // 初回 fallback（Notion 本文）にのみクリーニングを適用する
+        const draft = getDraft(columnId, cleanDraftText(fallbackDraft));
         return { ...prev, [columnId]: draft };
       });
     },
@@ -143,18 +170,23 @@ export function Workspace() {
     [selectedColumnId, saveDraft],
   );
 
+  // ペイン3の下書きを常に最新値で参照するための ref
+  // （handleApplyMemo が currentDraft の変化で再生成されるのを防ぐ）
+  const currentDraftRef = useRef(currentDraft);
+  currentDraftRef.current = currentDraft;
+
   const handleApplyMemo = useCallback(
-    async (draft: string): Promise<string> => {
-      if (!selectedColumn?.memo?.trim()) {
-        throw new Error("加筆ポイントがありません");
+    async (selectedMemo: string): Promise<string> => {
+      if (!selectedColumn) {
+        throw new Error("コラムが選択されていません");
       }
 
       const res = await fetch("/api/apply-memo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          draft,
-          memo: selectedColumn.memo,
+          draft: currentDraftRef.current,
+          memo: selectedMemo,
           title: selectedColumn.title,
           no: selectedColumn.no,
         }),
@@ -180,7 +212,9 @@ export function Workspace() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+    <div className="h-screen overflow-x-auto overflow-y-hidden bg-background text-foreground">
+      {/* コンテンツ全体に最小幅を設定し、狭いビューポートでも横スクロールで全ペインを表示する */}
+      <div className="flex h-full min-w-[1200px] flex-col">
       <div className="fixed inset-x-0 top-0 z-10 flex h-11 items-center border-b-2 border-b-tsukiko-green bg-background/80 px-4 backdrop-blur-sm">
         <span className="text-sm font-semibold text-tsukiko-green">
           月子の発達でこぼこ日記
@@ -214,23 +248,40 @@ export function Workspace() {
         )}
       </div>
 
-      <div className="mt-11 flex min-h-0 flex-1">
-        <ColumnLibraryPane
-          columns={columns}
-          selectedColumnId={selectedColumnId}
-          onSelectColumn={handleSelectColumn}
-          onCycleStatus={handleCycleStatus}
-        />
-        <ColumnDetailPane column={selectedColumn} onApplyMemo={handleApplyMemo} draft={currentDraft} />
-        <NoteDraftPane
-          column={selectedColumn}
-          draft={currentDraft}
-          onDraftChange={handleDraftChange}
-          onApplyMemo={handleApplyMemo}
-          onPublishNote={handlePublishNote}
-          loadingBody={loadingBodyId === selectedColumnId}
-        />
+      <div ref={paneContainerRef} className="mt-11 flex min-h-0 flex-1">
+        {/* ペイン1 — コラムライブラリ（幅可変） */}
+        <div className="flex shrink-0 overflow-hidden" style={{ width: widths[0] }}>
+          <ColumnLibraryPane
+            columns={columns}
+            selectedColumnId={selectedColumnId}
+            onSelectColumn={handleSelectColumn}
+            onCycleStatus={handleCycleStatus}
+          />
+        </div>
+
+        <PaneDivider onPointerDown={(e) => startDrag(0, e)} />
+
+        {/* ペイン2 — コラム詳細（幅可変） */}
+        <div className="flex shrink-0 overflow-hidden" style={{ width: widths[1] }}>
+          <ColumnDetailPane column={selectedColumn} onApplyMemo={handleApplyMemo} draft={currentDraft} />
+        </div>
+
+        <PaneDivider onPointerDown={(e) => startDrag(1, e)} />
+
+        {/* ペイン3 — Note下書き（残余幅を flex-1 で吸収。最小幅 150px） */}
+        <div className="flex min-w-[150px] flex-1 overflow-hidden">
+          <NoteDraftPane
+            column={selectedColumn}
+            draft={currentDraft}
+            onDraftChange={handleDraftChange}
+            onPublishNote={handlePublishNote}
+            loadingBody={loadingBodyId === selectedColumnId}
+          />
+        </div>
+
+        {/* ペイン4 — SNS 投稿文メーカー（固定幅） */}
         <SnsGeneratorPane column={selectedColumn} noteDraft={currentDraft} />
+      </div>
       </div>
     </div>
   );

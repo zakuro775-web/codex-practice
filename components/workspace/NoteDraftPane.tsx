@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Check, ClipboardCopy, Loader2, NotebookPen, Sparkles } from "lucide-react";
+import { CalendarDays, Check, ClipboardCopy, Loader2, NotebookPen } from "lucide-react";
 import { useState, useCallback } from "react";
 
 import { type Column } from "@/data/columns";
@@ -20,7 +20,6 @@ type Props = {
   column: Column | null;
   draft: string;
   onDraftChange: (value: string) => void;
-  onApplyMemo?: (draft: string) => Promise<string>;
   onPublishNote?: (status: "予約投稿中" | "Note公開済", date: string) => Promise<void>;
   loadingBody?: boolean;
 };
@@ -29,13 +28,10 @@ export function NoteDraftPane({
   column,
   draft,
   onDraftChange,
-  onApplyMemo,
   onPublishNote,
   loadingBody,
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [applyError, setApplyError] = useState<string | null>(null);
 
   // Dialog 用の状態
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -49,19 +45,6 @@ export function NoteDraftPane({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [draft]);
-
-  const handleApplyMemo = useCallback(async () => {
-    if (!onApplyMemo || !draft.trim()) return;
-    setApplying(true);
-    setApplyError(null);
-    try {
-      await onApplyMemo(draft);
-    } catch (e) {
-      setApplyError(e instanceof Error ? e.message : "加筆に失敗しました");
-    } finally {
-      setApplying(false);
-    }
-  }, [onApplyMemo, draft]);
 
   const handleDialogOpenChange = useCallback((open: boolean) => {
     setDialogOpen(open);
@@ -88,7 +71,6 @@ export function NoteDraftPane({
     [onPublishNote, dateValue],
   );
 
-  const canApplyMemo = Boolean(column?.memo?.trim() && draft.trim() && onApplyMemo);
   const canOpenPublishDialog =
     Boolean(onPublishNote) &&
     (column?.status === "未着手" ||
@@ -102,27 +84,6 @@ export function NoteDraftPane({
         <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
           Note 下書き
         </span>
-        {column && canApplyMemo && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={handleApplyMemo}
-            disabled={applying || loadingBody}
-          >
-            {applying ? (
-              <>
-                <Loader2 className="size-3 animate-spin" />
-                組み込み中…
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-3" />
-                加筆メモを組み込む
-              </>
-            )}
-          </Button>
-        )}
         {column && canOpenPublishDialog && (
           <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
             <DialogTrigger render={<Button variant="outline" size="sm" className="gap-1.5 text-xs" disabled={loadingBody} />}>
@@ -219,11 +180,6 @@ export function NoteDraftPane({
       ) : (
         <ScrollArea className="flex-1">
           <div className="flex flex-col gap-2 p-4">
-            {applyError && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {applyError}
-              </p>
-            )}
             {!column.memo?.trim() && (
               <p className="text-[10px] text-muted-foreground">
                 ※ 加筆ポイントは Notion の「加筆ポイント」列から読み込まれます

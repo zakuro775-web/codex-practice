@@ -57,7 +57,7 @@ export function ColumnLibraryPane({
   });
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar">
+    <aside className="flex h-full w-full flex-col overflow-hidden bg-sidebar">
       {/* ヘッダー */}
       <div className="flex items-center gap-2 border-b border-border bg-tsukiko-green-subtle px-3 py-3">
         <BookOpen className="size-4 shrink-0 text-muted-foreground" />
