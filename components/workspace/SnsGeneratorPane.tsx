@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Check, ClipboardCopy, Loader2, Sparkles, Send } from "lucide-react";
 
 import { type Column } from "@/data/columns";
@@ -46,6 +46,21 @@ type Props = {
   noteDraft: string;
 };
 
+async function patchSnsDb(
+  columnId: string,
+  data: { threadsText?: string; xText?: string; xTweets?: string[] },
+): Promise<void> {
+  try {
+    await fetch(`/api/column-data/${columnId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  } catch {
+    // ネットワークエラーは握り潰す
+  }
+}
+
 export function SnsGeneratorPane({ column, noteDraft }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("threads");
   const [selectedPattern, setSelectedPattern] = useState<number>(1);
@@ -60,6 +75,31 @@ export function SnsGeneratorPane({ column, noteDraft }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [threadsCopied, setThreadsCopied] = useState(false);
   const [xCopied, setXCopied] = useState(false);
+  // 編集後の自動保存デバウンス用タイマー
+  const snsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // コラム切り替え時：DB から SNS テキストを読み込む
+  useEffect(() => {
+    if (!column) return;
+    let cancelled = false;
+    setThreadsText("");
+    setXText("");
+    setXTweets([]);
+
+    fetch(`/api/column-data/${column.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { threadsText?: string; xText?: string; xTweets?: string[] } | null) => {
+        if (cancelled || !data) return;
+        if (data.threadsText) setThreadsText(data.threadsText);
+        if (data.xText) setXText(data.xText);
+        if (data.xTweets?.length) setXTweets(data.xTweets);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [column?.id]);
 
   const handleGenerate = useCallback(async () => {
     if (!column) return;
@@ -87,13 +127,19 @@ export function SnsGeneratorPane({ column, noteDraft }: Props) {
       }
       const data = await res.json();
       if (activeTab === "threads") {
-        setThreadsText(data.text ?? "");
+        const newText = data.text ?? "";
+        setThreadsText(newText);
+        void patchSnsDb(column.id, { threadsText: newText });
       } else if (xFormat === "thread") {
-        setXTweets(data.tweets ?? []);
+        const newTweets = data.tweets ?? [];
+        setXTweets(newTweets);
         setXText("");
+        void patchSnsDb(column.id, { xTweets: newTweets });
       } else {
-        setXText(data.text ?? "");
+        const newText = data.text ?? "";
+        setXText(newText);
         setXTweets([]);
+        void patchSnsDb(column.id, { xText: newText });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成に失敗しました");
@@ -110,14 +156,49 @@ export function SnsGeneratorPane({ column, noteDraft }: Props) {
   }, [threadsText]);
 
   const handleCopyX = useCallback(async () => {
-    const text = xFormat === "thread"
-      ? xTweets.join("\n\n")
-      : xText;
+    const text = xFormat === "thread" ? xTweets.join("\n\n") : xText;
     if (!text) return;
     await navigator.clipboard.writeText(text);
     setXCopied(true);
     setTimeout(() => setXCopied(false), 2000);
   }, [xFormat, xTweets, xText]);
+
+  // 手動編集時の DB 保存（1 秒デバウンス）
+  const handleThreadsTextChange = useCallback(
+    (value: string) => {
+      setThreadsText(value);
+      if (!column) return;
+      if (snsSaveTimerRef.current) clearTimeout(snsSaveTimerRef.current);
+      snsSaveTimerRef.current = setTimeout(() => {
+        void patchSnsDb(column.id, { threadsText: value });
+      }, 1000);
+    },
+    [column],
+  );
+
+  const handleXTextChange = useCallback(
+    (value: string) => {
+      setXText(value);
+      if (!column) return;
+      if (snsSaveTimerRef.current) clearTimeout(snsSaveTimerRef.current);
+      snsSaveTimerRef.current = setTimeout(() => {
+        void patchSnsDb(column.id, { xText: value });
+      }, 1000);
+    },
+    [column],
+  );
+
+  const handleXTweetsChange = useCallback(
+    (tweets: string[]) => {
+      setXTweets(tweets);
+      if (!column) return;
+      if (snsSaveTimerRef.current) clearTimeout(snsSaveTimerRef.current);
+      snsSaveTimerRef.current = setTimeout(() => {
+        void patchSnsDb(column.id, { xTweets: tweets });
+      }, 1000);
+    },
+    [column],
+  );
 
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col overflow-hidden bg-sidebar">
@@ -298,7 +379,7 @@ export function SnsGeneratorPane({ column, noteDraft }: Props) {
                 targetChars={threadsTargetChars}
                 copied={threadsCopied}
                 onCopy={handleCopyThreads}
-                onChange={setThreadsText}
+                onChange={handleThreadsTextChange}
               />
             )}
 
@@ -309,7 +390,7 @@ export function SnsGeneratorPane({ column, noteDraft }: Props) {
                 targetChars={xTargetChars}
                 copied={xCopied}
                 onCopy={handleCopyX}
-                onChange={setXText}
+                onChange={handleXTextChange}
               />
             )}
 
@@ -318,7 +399,7 @@ export function SnsGeneratorPane({ column, noteDraft }: Props) {
                 tweets={xTweets}
                 copied={xCopied}
                 onCopy={handleCopyX}
-                onChange={setXTweets}
+                onChange={handleXTweetsChange}
               />
             )}
           </div>

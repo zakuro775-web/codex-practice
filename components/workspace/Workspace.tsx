@@ -13,6 +13,38 @@ import { useLocalOverrides } from "@/hooks/useLocalOverrides";
 import { usePaneResize } from "@/hooks/usePaneResize";
 import { cleanDraftText } from "@/lib/clean-draft";
 
+type ColumnDbData = {
+  noteDraft: string;
+  threadsText: string;
+  xText: string;
+  xTweets: string[];
+};
+
+async function fetchColumnDb(columnId: string): Promise<ColumnDbData | null> {
+  try {
+    const res = await fetch(`/api/column-data/${columnId}`);
+    if (!res.ok) return null;
+    return (await res.json()) as ColumnDbData | null;
+  } catch {
+    return null;
+  }
+}
+
+async function patchColumnDb(
+  columnId: string,
+  data: Partial<Pick<ColumnDbData, "noteDraft">>,
+): Promise<void> {
+  try {
+    await fetch(`/api/column-data/${columnId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  } catch {
+    // ネットワークエラーは握り潰す（UI には影響させない）
+  }
+}
+
 /** ペイン間のドラッグ可能な仕切り */
 function PaneDivider({
   onPointerDown,
@@ -43,12 +75,13 @@ export function Workspace() {
     updateColumn,
     syncToNotion,
   } = useColumnData();
-  const { ready: overridesReady, saveStatus, saveDraft, getStatus, getDraft } =
-    useLocalOverrides();
+  const { ready: overridesReady, saveStatus, getStatus } = useLocalOverrides();
 
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const initializedRef = useRef(false);
+  // Note下書きの DB 自動保存デバウンス用タイマー
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const paneContainerRef = useRef<HTMLDivElement>(null);
   const { widths, startDrag } = usePaneResize(paneContainerRef);
@@ -71,47 +104,54 @@ export function Workspace() {
   }, [loading, overridesReady, columns, getStatus, updateColumn]);
 
   const selectedColumn = columns.find((c) => c.id === selectedColumnId) ?? null;
-  const currentDraft = selectedColumnId
-    ? (drafts[selectedColumnId] ??
-      getDraft(selectedColumnId, selectedColumn?.noteDraft ?? ""))
-    : "";
+  const currentDraft = selectedColumnId ? (drafts[selectedColumnId] ?? "") : "";
 
   const initDraftForColumn = useCallback(
     (columnId: string, fallbackDraft: string) => {
       setDrafts((prev) => {
         if (prev[columnId] != null) return prev;
-        // localStorage に保存済みのユーザー編集テキストはそのまま、
-        // 初回 fallback（Notion 本文）にのみクリーニングを適用する
-        const draft = getDraft(columnId, cleanDraftText(fallbackDraft));
-        return { ...prev, [columnId]: draft };
+        return { ...prev, [columnId]: cleanDraftText(fallbackDraft) };
       });
     },
-    [getDraft],
+    [],
   );
 
-  // コラム選択時：Notion 本文を遅延取得、下書きを初期化
+  // コラム選択時：Notion 本文を遅延取得 → DB 保存済み下書きで上書き
   useEffect(() => {
     if (!selectedColumnId || !overridesReady) return;
 
     const col = columns.find((c) => c.id === selectedColumnId);
     if (!col) return;
 
-    if (source === "notion" && !col.originalText) {
-      let cancelled = false;
-      loadColumnBody(selectedColumnId).then((detail) => {
+    let cancelled = false;
+
+    const loadDraft = async () => {
+      // 1. Notion 本文（同期的に使える場合）を先にセット
+      if (source !== "notion" || col.originalText) {
+        const fallback = col.noteDraft || col.originalText || "";
+        if (!cancelled) initDraftForColumn(selectedColumnId, fallback);
+      }
+
+      // 2. Notion 本文の遅延取得が必要な場合
+      if (source === "notion" && !col.originalText) {
+        const detail = await loadColumnBody(selectedColumnId);
         if (cancelled || !detail) return;
         const fallback = detail.noteDraft || detail.originalText || "";
-        initDraftForColumn(selectedColumnId, fallback);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
+        if (!cancelled) initDraftForColumn(selectedColumnId, fallback);
+      }
 
-    initDraftForColumn(
-      selectedColumnId,
-      col.noteDraft || col.originalText || "",
-    );
+      // 3. DB に保存済みの下書きがあれば上書き（ユーザーが以前編集したもの）
+      const dbData = await fetchColumnDb(selectedColumnId);
+      if (cancelled) return;
+      if (dbData?.noteDraft) {
+        setDrafts((prev) => ({ ...prev, [selectedColumnId]: dbData.noteDraft }));
+      }
+    };
+
+    void loadDraft();
+    return () => {
+      cancelled = true;
+    };
   }, [
     selectedColumnId,
     overridesReady,
@@ -165,9 +205,13 @@ export function Workspace() {
     (value: string) => {
       if (!selectedColumnId) return;
       setDrafts((prev) => ({ ...prev, [selectedColumnId]: value }));
-      saveDraft(selectedColumnId, value);
+      // 1 秒デバウンスで DB に保存
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = setTimeout(() => {
+        void patchColumnDb(selectedColumnId, { noteDraft: value });
+      }, 1000);
     },
-    [selectedColumnId, saveDraft],
+    [selectedColumnId],
   );
 
   // ペイン3の下書きを常に最新値で参照するための ref
